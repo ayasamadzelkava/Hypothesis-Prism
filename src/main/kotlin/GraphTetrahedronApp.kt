@@ -154,128 +154,148 @@ fun createTextLabel(textStr: String, position: Point3D, color: Color): Text {
 }
 
 // -------------------------------------
-// Graph Data Model and Builder (Combined IDgraph tree)
+// Unified Collapse Rendering on IDgraph (Unified Graph) Based on Internal Levels
 // -------------------------------------
+/*
+  This function performs collapse on the unified IDgraph tree.
+  Each node has an "internal level" computed as follows:
+    - For nodes from the I tree: internal level = declared level.
+    - For nodes from the D tree: internal level = (n + m) – declared level,
+      where n = (# levels in I tree) and m = (# levels in D tree).
 
-data class GraphNode(
-    val id: Int,
-    val label: String,
-    val position: Point3D,
-    val treeType: String, // e.g., "I" or "D"
-    val level: Int
-)
+  The function traverses the unified tree structure (which is built by merging the two trees
+  along their intra-tree edges) and if a node’s internal level is in the collapse set, it is hidden.
+  In addition, if after processing its children no visible descendant is found, then the node itself
+  is treated as a "bridge" (i.e. returned as a visible leaf) so that connecting (cross) edges can be drawn.
 
-data class GraphEdge(
-    val from: Int,
-    val to: Int,
-    val color: Color = Color.PURPLE
-)
-
-data class Graph(
-    val nodes: List<GraphNode>,
-    val adjMatrix: Array<BooleanArray>,
-    val edges: List<GraphEdge>
-)
-
-fun mapTreeNodesToGraphIds(
-    node: TreeNode,
-    treeType: String,
-    mapping: MutableMap<TreeNode, Int>,
-    nodeList: MutableList<GraphNode>
-) {
-    val id = nodeList.size
-    mapping[node] = id
-    nodeList.add(GraphNode(id, node.label, node.position, treeType, node.level))
-    node.children.forEach { mapTreeNodesToGraphIds(it, treeType, mapping, nodeList) }
-}
-
-fun collectTreeEdges(
-    node: TreeNode,
-    mapping: Map<TreeNode, Int>,
-    edgeList: MutableList<GraphEdge>,
-    edgeColor: Color
-) {
-    for (child in node.children) {
-        edgeList.add(GraphEdge(mapping[node]!!, mapping[child]!!, edgeColor))
-        collectTreeEdges(child, mapping, edgeList, edgeColor)
-    }
-}
-
-fun collectLeaves(node: TreeNode, leaves: MutableList<TreeNode>) {
-    if (node.children.isEmpty()) leaves.add(node)
-    else node.children.forEach { collectLeaves(it, leaves) }
-}
-
-fun buildIDGraph(iTreeRoot: TreeNode, dTreeRoot: TreeNode): Graph {
-    val graphNodes = mutableListOf<GraphNode>()
-    val graphEdges = mutableListOf<GraphEdge>()
-    val mappingI = mutableMapOf<TreeNode, Int>()
-    val mappingD = mutableMapOf<TreeNode, Int>()
-
-    // Map nodes from I tree (we tag them as "I") and from D tree (tagged as "D")
-    mapTreeNodesToGraphIds(iTreeRoot, "I", mappingI, graphNodes)
-    mapTreeNodesToGraphIds(dTreeRoot, "D", mappingD, graphNodes)
-
-    // Add intra-tree parent–child edges.
-    collectTreeEdges(iTreeRoot, mappingI, graphEdges, Color.GREEN)
-    collectTreeEdges(dTreeRoot, mappingD, graphEdges, Color.BLUE)
-
-    // Collect leaves from both trees.
-    val iLeaves = mutableListOf<TreeNode>()
-    val dLeaves = mutableListOf<TreeNode>()
-    collectLeaves(iTreeRoot, iLeaves)
-    collectLeaves(dTreeRoot, dLeaves)
-
-    // Add all–to–all connection edges between I leaves and D leaves.
-    for (iLeaf in iLeaves) {
-        for (dLeaf in dLeaves) {
-            val from = mappingI[iLeaf]!!
-            val to = mappingD[dLeaf]!!
-            graphEdges.add(GraphEdge(from, to, Color.PURPLE))
-        }
-    }
-
-    // Build an adjacency matrix.
-    val n = graphNodes.size
-    val matrix = Array(n) { BooleanArray(n) { false } }
-    for (edge in graphEdges) {
-        matrix[edge.from][edge.to] = true
-        matrix[edge.to][edge.from] = true
-    }
-
-    return Graph(graphNodes, matrix, graphEdges)
-}
-
-fun buildGraphGroup(graph: Graph, nodeRadius: Double): Group {
+  Note: This function is applied separately to the I and D subtrees (with appropriate internal level mapping)
+  and then the cross edges are drawn between the visible leaves of each. This produces a unified IDgraph collapse.
+*/
+fun renderCollapsedIDGraph(
+    root: TreeNode,
+    effectiveParent: TreeNode?,
+    collapseLevels: Set<Int>,
+    getInternalLevel: (TreeNode) -> Int,
+    nodeColor: Color,
+    nodeRadius: Double
+): Pair<Group, List<TreeNode>> {
     val group = Group()
-    // Create markers and labels.
-    for (node in graph.nodes) {
-        // Use different colors for I and D nodes.
-        val color = if (node.treeType == "I") Color.GREEN else Color.BLUE
-        val marker = createVertexMarker(node.position, nodeRadius, color)
-        val label = createTextLabel(node.label, node.position, Color.BLACK)
-        group.children.addAll(marker, label)
+    val visibleLeaves = mutableListOf<TreeNode>()
+    val internalLevel = getInternalLevel(root)
+    val isCollapsed = internalLevel in collapseLevels
+
+    // Draw node if not collapsed.
+    if (!isCollapsed) {
+        group.children.add(createVertexMarker(root.position, nodeRadius, nodeColor))
+        group.children.add(createTextLabel(root.label, root.position, Color.BLACK))
     }
-    // Draw edges.
-    for (edge in graph.edges) {
-        val nodeFrom = graph.nodes[edge.from]
-        val nodeTo = graph.nodes[edge.to]
-        val line = create3DLine(nodeFrom.position, nodeTo.position, 0.5, edge.color)
-        line.viewOrder = -1.0
-        group.children.add(line)
+    // In unified collapse, if the node is collapsed, we do NOT use its position as an anchor.
+    val newEffective = if (!isCollapsed) root else effectiveParent
+
+    // Process children.
+    for (child in root.children) {
+        val childInternal = getInternalLevel(child)
+        val childCollapsed = childInternal in collapseLevels
+        // If a child is visible, draw an edge from newEffective to child.
+        if (newEffective != null && !childCollapsed) {
+            group.children.add(create3DLine(newEffective.position, child.position, 1.0, nodeColor))
+        }
+        val (childGroup, childLeaves) = renderCollapsedIDGraph(child, newEffective, collapseLevels, getInternalLevel, nodeColor, nodeRadius)
+        group.children.add(childGroup)
+        visibleLeaves.addAll(childLeaves)
     }
-    return group
+    // If no visible leaves were found in the subtree and this node is not collapsed,
+    // treat this node as a visible leaf (bridge) so that cross edges can attach.
+    if (visibleLeaves.isEmpty() && !isCollapsed) {
+        visibleLeaves.add(root)
+    }
+    return Pair(group, visibleLeaves)
 }
 
 // -------------------------------------
-// Main Application: Combined IDgraph Tree
+// Main Application: Unified IDgraph Tree with Collapse on All Levels
 // -------------------------------------
 
 class GraphTetrahedronApp : Application() {
 
+    // Global collapse set: any internal level in this set will be collapsed.
+    private val globalCollapseLevels: MutableSet<Int> = mutableSetOf()
+
+    // Group holding the rendered (collapsed) unified IDgraph tree.
+    private var idGraphCollapseGroup: Group = Group()
+
+    // Single overlay group for toggle buttons.
+    private var toggleOverlayGroup: Group = Group()
+
+    // Global references to the parsed I and D trees.
+    private lateinit var iTreeRoot: TreeNode
+    private lateinit var dTreeRoot: TreeNode
+
+    // The overall scene group.
+    private lateinit var sceneGroup: Group
+
+    // For mouse rotation.
+    private var anchorX = 0.0
+    private var anchorY = 0.0
+    private var anchorAngleX = 0.0
+    private var anchorAngleY = 0.0
+    private val rotateX = Rotate(20.0, Rotate.X_AXIS)
+    private val rotateY = Rotate(-20.0, Rotate.Y_AXIS)
+
+    // Refresh the unified (collapsed) IDgraph tree.
+    private fun refreshTrees() {
+        sceneGroup.children.remove(idGraphCollapseGroup)
+        // For I tree, internal mapping is identity.
+        val (iTreeRender, iVisibleLeaves) = renderCollapsedIDGraph(iTreeRoot, null, globalCollapseLevels, { it.level }, Color.GREEN, 3.0)
+        // For D tree, internal mapping: newLevel = n + m - declared level,
+        // where n = (max level in I tree) + 1 and m = (max level in D tree) + 1.
+        val n = computeMaxLevel(iTreeRoot) + 1
+        val m = computeMaxLevel(dTreeRoot) + 1
+        val getInternalD: (TreeNode) -> Int = { node -> n + m - node.level }
+        val (dTreeRender, dVisibleLeaves) = renderCollapsedIDGraph(dTreeRoot, null, globalCollapseLevels, getInternalD, Color.BLUE, 3.0)
+        // Build cross edges (purple) between every visible leaf of I tree and D tree.
+        val crossEdges = Group()
+        for (iLeaf in iVisibleLeaves) {
+            for (dLeaf in dVisibleLeaves) {
+                crossEdges.children.add(create3DLine(iLeaf.position, dLeaf.position, 1.0, Color.PURPLE))
+            }
+        }
+        idGraphCollapseGroup = Group(iTreeRender, dTreeRender, crossEdges)
+        sceneGroup.children.add(idGraphCollapseGroup)
+    }
+
+    // Update the toggle overlay: a single column of toggle arrows for all distinct internal levels.
+    private fun updateToggleOverlay() {
+        toggleOverlayGroup.children.clear()
+        // For I tree, internal levels are 0 .. iMax.
+        val iMax = computeMaxLevel(iTreeRoot)
+        // For D tree, internal levels (via mapping) range from (n+1) to (n+m) with n = iMax+1.
+        val n = iMax + 1
+        val m = computeMaxLevel(dTreeRoot) + 1
+        val dLevels = (n + 1..n + m).toList()
+        val unionLevels = (0..iMax).toList() + dLevels
+        val sortedLevels = unionLevels.sorted()
+        var i = 0
+        for (lvl in sortedLevels) {
+            val arrow = if (globalCollapseLevels.contains(lvl)) "▶" else "▼"
+            val txt = Text("lvl $lvl: $arrow")
+            txt.fill = Color.BLACK
+            txt.style = "-fx-font-size: 16px;"
+            txt.translateX = -350.0
+            txt.translateY = -250.0 + i * 30.0
+            txt.setOnMouseClicked {
+                if (globalCollapseLevels.contains(lvl)) globalCollapseLevels.remove(lvl)
+                else globalCollapseLevels.add(lvl)
+                refreshTrees()
+                updateToggleOverlay()
+            }
+            toggleOverlayGroup.children.add(txt)
+            i++
+        }
+    }
+
     override fun start(primaryStage: Stage) {
-        // Define tetrahedron vertices.
-        // We use these points to position the trees on different faces.
+        // Define tetrahedron vertices for positioning.
         val iSource = Point3D(0.0, 100.0, 0.0)            // I tree source
         val dSource = Point3D(-100.0, -100.0, 100.0)         // D tree source
         val dLeftEndpoint = Point3D(100.0, -100.0, 100.0)     // D tree left endpoint
@@ -317,26 +337,21 @@ class GraphTetrahedronApp : Application() {
             createTextLabel("m2", dRightEndpoint, Color.ORANGE)
         )
 
-        // Define tree specification strings.
         val iTreeDefinition = "A(lvl0, source)->B,C; B(lvl1, int)->D,E; C(lvl1, int)->F; D(lvl2, int)->; E(lvl2,int)->; F(lvl2,int)->"
         val dTreeDefinition = "X(lvl0, source)->Y,Z; Y(lvl1, int)->P; Z(lvl1, int)->Q,R; Q(lvl2,measurement)->; R(lvl2,measurement)->; P(lvl2,measurement)->"
 
-        // Parse the trees.
-        val iTreeRoot = parseTreeDefinition(iTreeDefinition)
-        val dTreeRoot = parseTreeDefinition(dTreeDefinition)
+        iTreeRoot = parseTreeDefinition(iTreeDefinition)
+        dTreeRoot = parseTreeDefinition(dTreeDefinition)
         assignLeafOrderAndPropagate(iTreeRoot)
         assignLeafOrderAndPropagate(dTreeRoot)
         layoutTree(iTreeRoot, iSource, iLeftEndpoint, iRightEndpoint)
         layoutTree(dTreeRoot, dSource, dLeftEndpoint, dRightEndpoint)
 
-        // Build the combined graph.
-        val idGraph = buildIDGraph(iTreeRoot, dTreeRoot)
-        val idGraphGroup = buildGraphGroup(idGraph, 3.0)
+        sceneGroup = Group(edgesGroup, vertexMarkers, vertexLabels)
+        refreshTrees()
+        sceneGroup.children.add(toggleOverlayGroup)
+        updateToggleOverlay()
 
-        // Combine tetrahedron edges, vertex markers, labels, and the IDgraph.
-        val sceneGroup = Group(edgesGroup, vertexMarkers, vertexLabels, idGraphGroup)
-
-        // Center the tetrahedron.
         val center = Point3D(
             (iSource.x + dSource.x + dLeftEndpoint.x + dRightEndpoint.x) / 4,
             (iSource.y + dSource.y + dLeftEndpoint.y + dRightEndpoint.y) / 4,
@@ -346,12 +361,8 @@ class GraphTetrahedronApp : Application() {
         sceneGroup.translateY = -center.y
         sceneGroup.translateZ = -center.z
 
-        // Apply rotations.
-        val rotateX = Rotate(20.0, Rotate.X_AXIS)
-        val rotateY = Rotate(-20.0, Rotate.Y_AXIS)
         sceneGroup.transforms.addAll(rotateX, rotateY)
 
-        // Set up camera and scene.
         val camera = PerspectiveCamera(true)
         camera.translateZ = -800.0
         camera.nearClip = 0.1
@@ -361,12 +372,6 @@ class GraphTetrahedronApp : Application() {
         val scene = Scene(rootGroup, 800.0, 600.0, true, SceneAntialiasing.BALANCED)
         scene.fill = Color.WHITE
         scene.camera = camera
-
-        // Interactivity: Mouse drag to rotate, scroll to zoom.
-        var anchorX = 0.0
-        var anchorY = 0.0
-        var anchorAngleX = 0.0
-        var anchorAngleY = 0.0
 
         scene.addEventHandler(MouseEvent.MOUSE_PRESSED) { event ->
             anchorX = event.sceneX
@@ -382,7 +387,6 @@ class GraphTetrahedronApp : Application() {
             camera.translateZ += event.deltaY
         }
 
-        // Animation timer to keep text labels facing the camera.
         object : AnimationTimer() {
             override fun handle(now: Long) {
                 sceneGroup.children.filterIsInstance<Text>().forEach { text ->
@@ -394,7 +398,7 @@ class GraphTetrahedronApp : Application() {
             }
         }.start()
 
-        primaryStage.title = "Combined IDgraph Tree"
+        primaryStage.title = "Unified IDgraph Tree with Collapse on All Levels"
         primaryStage.scene = scene
         primaryStage.show()
     }
