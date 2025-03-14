@@ -154,8 +154,15 @@ fun renderCollapsedIDGraph(
         val childInternal = getInternalLevel(child)
         val childCollapsed = childInternal in collapseLevels
         if (newEffective != null && !childCollapsed) {
-            group.children.add(create3DLine(newEffective.position, child.position, 1.0, nodeColor))
+            group.children.add(create3DLine(newEffective.position, child.position, 1.0, nodeColor)) //problem might be here
         }
+        /*
+        if (!childCollapsed) {
+            group.children.add(create3DLine(root.position, child.position, 1.0, nodeColor))
+        }
+
+         */
+
         val (childGroup, childLeaves) = renderCollapsedIDGraph(child, newEffective, collapseLevels, getInternalLevel, nodeColor, nodeRadius)
         group.children.add(childGroup)
         visibleLeaves.addAll(childLeaves)
@@ -237,17 +244,87 @@ class GraphTetrahedronApp : Application() {
         c.children.add(f)
         iTreeRoot = a
     }
+
+
+
+
+
     private fun buildDTree() {
-        val cpmd = TreeNode("D sourse", 0, "source")
-        val painD = TreeNode("D true", 1, "int")
-        val memoryD = TreeNode("D false", 1, "int")
-        val pain = TreeNode("D1", 2, "measurement")
-        val noPain = TreeNode("D2", 2, "measurement")
-        val memory = TreeNode("D3", 2, "measurement")
-        cpmd.children.addAll(listOf(painD, memoryD))
-        painD.children.addAll(listOf(pain, noPain))
-        memoryD.children.addAll(listOf(memory))
+        val cpmd = TreeNode("chronic pain and memory deficit", 0, "source")
         dTreeRoot = cpmd
+
+
+
+        val painD = TreeNode("pain_o", 1, "int")
+        val memoryD = TreeNode("memory_o", 1, "int")
+        cpmd.children.addAll(listOf(painD, memoryD))
+
+
+
+        //level 2
+
+        val pain = TreeNode("pain", 2, "int")
+        val noPain = TreeNode("no pain", 2, "int")
+        painD.children.addAll(listOf(pain, noPain))
+
+
+        val memory = TreeNode("memory", 2, "int")
+        val noMemory = TreeNode("no memory", 2, "int")
+        memoryD.children.addAll(listOf(memory, noMemory))
+
+        /*
+        // level 3
+
+        val painSensitivity = TreeNode("pain sensitivity", 3, "measurement")
+        val workingMemoryDeficit = TreeNode("working memory deficit", 3, "measurement")
+        val locationMemoryDeficit = TreeNode("location memory deficit", 3, "measurement")
+        pain.children.addAll(listOf(painSensitivity))
+        noPain.children.addAll(listOf(painSensitivity))
+        memory.children.addAll(listOf(workingMemoryDeficit, locationMemoryDeficit))
+        noMemory.children.addAll(listOf(workingMemoryDeficit,locationMemoryDeficit))
+
+        // level 4
+
+        val mechanisticWithdrawalThreshold = TreeNode("mechanistic withdrawal threshold", 4, "measurement")
+        painSensitivity.children.addAll(listOf(mechanisticWithdrawalThreshold))
+
+
+        collapse function might be causing nodes to overlap in display when a leaf is given 2 parent nodes, perhaps leaves should only have one parent
+        * */
+
+
+
+
+       // level 3 adj
+
+       val painSensitivity = TreeNode("pain sensitivity", 3, "measurement")
+       val workingMemoryDeficit = TreeNode("working memory deficit", 3, "measurement")
+       val locationMemoryDeficit = TreeNode("location memory deficit", 3, "measurement")
+       pain.children.addAll(listOf(painSensitivity))
+       //noPain.children.addAll(listOf(painSensitivity))
+       memory.children.addAll(listOf(workingMemoryDeficit, locationMemoryDeficit))
+       //noMemory.children.addAll(listOf(workingMemoryDeficit,locationMemoryDeficit))
+        /*
+       collapse function might be causing nodes to overlap in display when a leaf is given 2 parent nodes,
+       perhaps leaves should only have one parent as in an actual tree?
+       or maybe it is a dimension thing, where 3d starts to become inadequate in display. Prism should naturally widen?
+       * */
+
+        /*
+       // level 3 experiment
+
+       val painSensitivity = TreeNode("pain sensitivity", 3, "measurement")
+       val workingMemoryDeficit = TreeNode("working memory deficit", 3, "measurement")
+       val locationMemoryDeficit = TreeNode("location memory deficit", 3, "measurement")
+       pain.children.addAll(listOf(painSensitivity))
+       //noPain.children.addAll(listOf(painSensitivity))
+       memory.children.addAll(listOf(workingMemoryDeficit, locationMemoryDeficit,painSensitivity))
+       //noMemory.children.addAll(listOf(workingMemoryDeficit,locationMemoryDeficit))
+
+
+      collapse function might be causing nodes to overlap in display when a leaf is given 2 parent nodes, perhaps leaves should only have one parent
+      * */
+
     }
 
     // -------------------------------------
@@ -261,6 +338,9 @@ class GraphTetrahedronApp : Application() {
         booleanArrayOf(true, true,  true,  true),    // from E
         booleanArrayOf(true,  true,  true, true)       // from F
     )
+    fun createAdjacencyMatrix(rows: Int, cols: Int, defaultValue: Boolean = true): MutableList<MutableList<Boolean>> {
+        return MutableList(rows) { MutableList(cols) { defaultValue } }
+    }
 
     private fun refreshTrees() {
         sceneGroup.children.remove(idGraphCollapseGroup)
@@ -273,6 +353,7 @@ class GraphTetrahedronApp : Application() {
         val (dTreeRender, dVisibleLeaves) = renderCollapsedIDGraph(dTreeRoot, null, globalCollapseLevels, getInternalD, Color.BLUE, 3.0)
         // Build cross edges (purple) between visible leaves of I‑tree and D‑tree using the adjacency matrix.
         val crossEdges = Group()
+        val crossAdjacency = createAdjacencyMatrix(iVisibleLeaves.size, dVisibleLeaves.size) // should dynamically update crossadjeacencymatrix
         for (i in iVisibleLeaves.indices) {
             for (j in dVisibleLeaves.indices) {
                 if (crossAdjacency[i][j]) {
