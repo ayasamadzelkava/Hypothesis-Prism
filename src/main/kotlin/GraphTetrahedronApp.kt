@@ -28,25 +28,85 @@ data class TreeNode(
     var position: Point3D = Point3D(0.0, 0.0, 0.0),
     var u: Double = 0.0  // horizontal parameter for layout (0 = left, 1 = right)
 )
-
+// stretchy version
 fun assignLeafOrderAndPropagate(root: TreeNode) {
     val leaves = mutableListOf<TreeNode>()
     fun dfs(node: TreeNode) {
-        if (node.children.isEmpty()) leaves.add(node) else node.children.forEach { dfs(it) }
+        if (node.children.isEmpty()) {
+            if (node !in leaves) {  // Only add if not already present
+                leaves.add(node)
+            }
+        } else {
+            node.children.forEach { dfs(it) }
+        }
     }
     dfs(root)
+    println(leaves)
     val n = leaves.size
     leaves.forEachIndexed { index, node ->
         node.u = if (n > 1) index.toDouble() / (n - 1) else 0.5
+        println(node.u)
     }
     fun propagate(node: TreeNode) {
+        if (node in leaves) return  // Skip propagation for leaf nodes
+        node.children.forEach { propagate(it) }
         if (node.children.isNotEmpty()) {
-            node.children.forEach { propagate(it) }
             node.u = node.children.map { it.u }.average()
         }
     }
     propagate(root)
 }
+
+// unifirm(ish) version
+//fun assignLeafOrderAndPropagate(root: TreeNode, verticalSpacing: Double = 1.0) {
+//    // 1. DFS to collect leaves.
+//    val leaves = mutableListOf<TreeNode>()
+//    fun dfs(node: TreeNode) {
+//        if (node.children.isEmpty()) {
+//            leaves.add(node)
+//        } else {
+//            node.children.forEach { dfs(it) }
+//        }
+//    }
+//    dfs(root)
+//
+//    // 2. Assign uniformly spaced positions to leaves.
+//    val n = leaves.size
+//    leaves.forEachIndexed { index, node ->
+//        node.u = if (n > 1) index.toDouble() / (n - 1) else 0.5
+//    }
+//
+//    // 3. Propagate parent's positions as the average of their children.
+//    fun propagate(node: TreeNode) {
+//        if (node.children.isNotEmpty()) {
+//            node.children.forEach { propagate(it) }
+//            node.u = node.children.map { it.u }.average()
+//        }
+//    }
+//    propagate(root)
+//
+//    // 4. Group nodes by level.
+//    val levels = mutableMapOf<Int, MutableList<TreeNode>>()
+//    fun collectByLevel(node: TreeNode) {
+//        levels.getOrPut(node.level) { mutableListOf() }.add(node)
+//        node.children.forEach { collectByLevel(it) }
+//    }
+//    collectByLevel(root)
+//
+//    // 5. For each level, sort by the current u value (so relative order is preserved)
+//    // and then reassign uniformly spaced u values. Also update 3D position.
+//    levels.forEach { (level, nodes) ->
+//        nodes.sortBy { it.u }
+//        val count = nodes.size
+//        nodes.forEachIndexed { index, node ->
+//            val newU = if (count > 1) index.toDouble() / (count - 1) else 0.5
+//            node.u = newU
+//            // Update the 3D position using newU for horizontal placement and level for vertical spacing.
+//            node.position = Point3D(newU, level * verticalSpacing, 0.0)
+//            println("Node ${node.label} at level $level: u = $newU, position = ${node.position}")
+//        }
+//    }
+//}
 
 fun computeMaxLevel(root: TreeNode): Int {
     var maxLevel = root.level
@@ -188,7 +248,7 @@ class GraphTetrahedronApp : Application() {
     private var anchorY = 0.0
     private var anchorAngleX = 0.0
     private var anchorAngleY = 0.0
-    private val rotateX = Rotate(20.0, Rotate.X_AXIS)
+    private val rotateX = Rotate(-20.0, Rotate.X_AXIS)
     private val rotateY = Rotate(-20.0, Rotate.Y_AXIS)
 
     // -------------------------------------
@@ -225,6 +285,30 @@ class GraphTetrahedronApp : Application() {
 //        memoryD.children.addAll(listOf(memory, noMemory))
 //        dTreeRoot = cpmd
 //    }
+//    private fun buildITree() {
+//        val a = TreeNode("I sourse", 0, "source")
+//        val b = TreeNode("I true", 1, "int")
+//        val c = TreeNode("I false", 1, "int")
+//        val d = TreeNode("I1", 2, "int")
+//        val e = TreeNode("I2", 2, "int")
+//        val f = TreeNode("I3", 2, "int")
+//        a.children.addAll(listOf(b, c))
+//        b.children.addAll(listOf(d, e))
+//        c.children.add(f)
+//        iTreeRoot = a
+//    }
+//    private fun buildDTree() {
+//        val x = TreeNode("X sourse", 0, "source")
+//        val y = TreeNode("D true", 1, "int")
+//        val z = TreeNode("D false", 1, "int")
+//        val w = TreeNode("D1", 2, "measurement")
+//        val q = TreeNode("D2", 2, "measurement")
+//        val r = TreeNode("D3", 2, "measurement")
+//        x.children.addAll(listOf(y, z))
+//        y.children.addAll(listOf(w, q))
+//        z.children.addAll(listOf(r, q))
+//        dTreeRoot = x
+//    }
     private fun buildITree() {
         val a = TreeNode("I sourse", 0, "source")
         val b = TreeNode("I true", 1, "int")
@@ -238,15 +322,32 @@ class GraphTetrahedronApp : Application() {
         iTreeRoot = a
     }
     private fun buildDTree() {
-        val cpmd = TreeNode("D sourse", 0, "source")
-        val painD = TreeNode("D true", 1, "int")
-        val memoryD = TreeNode("D false", 1, "int")
-        val pain = TreeNode("D1", 2, "measurement")
-        val noPain = TreeNode("D2", 2, "measurement")
-        val memory = TreeNode("D3", 2, "measurement")
-        cpmd.children.addAll(listOf(painD, memoryD))
-        painD.children.addAll(listOf(pain, noPain))
-        memoryD.children.addAll(listOf(memory))
+        val cpmd = TreeNode("cpmd", 0, "source")
+        val pain = TreeNode("pain", 1, "int")
+        val memory = TreeNode("memory", 1, "int")
+        val pain_yes = TreeNode("pain+", 2, "int")
+        val no_pain = TreeNode("pain-", 2, "int")
+        val memory_present = TreeNode("memory+", 2, "int")
+        val no_memory = TreeNode("memory-", 2, "int")
+        val pain_sensitivity = TreeNode("pain sensitivity", 3, "int")
+        val wmd = TreeNode("working memory deficit", 3, "int")
+        val lmd = TreeNode("locational memory deficit", 3, "int")
+        val mwt = TreeNode("mechanical withdrawal threshold", 4, "measurment")
+        val dc = TreeNode("dendritic complexity", 4, "measurment")
+        val EMCa = TreeNode("EMC architecture", 4, "measurment")
+        val tsl = TreeNode("% time spent in location", 4, "measurment")
+        val tslmt = TreeNode("time spent in location mem", 4, "measurment")
+
+        cpmd.children.addAll(listOf(pain, memory))
+        pain.children.addAll(listOf(pain_yes, no_pain))
+        memory.children.addAll(listOf(memory_present, no_memory))
+        pain_yes.children.addAll(listOf(pain_sensitivity, dc, EMCa))
+        no_pain.children.addAll(listOf(pain_sensitivity, dc, EMCa))
+        memory_present.children.addAll(listOf(dc, EMCa, wmd, lmd))
+        no_memory.children.addAll(listOf(dc, EMCa, wmd, lmd))
+        pain_sensitivity.children.addAll(listOf(mwt))
+        wmd.children.addAll(listOf(tsl))
+        lmd.children.addAll(listOf(tslmt))
         dTreeRoot = cpmd
     }
 
@@ -261,7 +362,9 @@ class GraphTetrahedronApp : Application() {
         booleanArrayOf(true, true,  true,  true),    // from E
         booleanArrayOf(true,  true,  true, true)       // from F
     )
-
+    fun createAdjacencyMatrix(rows: Int, cols: Int, defaultValue: Boolean = true): MutableList<MutableList<Boolean>> {
+        return MutableList(rows) { MutableList(cols) { defaultValue } }
+    }
     private fun refreshTrees() {
         sceneGroup.children.remove(idGraphCollapseGroup)
         // I‑tree: use identity mapping for internal level.
@@ -273,6 +376,7 @@ class GraphTetrahedronApp : Application() {
         val (dTreeRender, dVisibleLeaves) = renderCollapsedIDGraph(dTreeRoot, null, globalCollapseLevels, getInternalD, Color.BLUE, 3.0)
         // Build cross edges (purple) between visible leaves of I‑tree and D‑tree using the adjacency matrix.
         val crossEdges = Group()
+        val crossAdjacency = createAdjacencyMatrix(iVisibleLeaves.size, dVisibleLeaves.size) // should dynamically update crossadjeacencymatrix
         for (i in iVisibleLeaves.indices) {
             for (j in dVisibleLeaves.indices) {
                 if (crossAdjacency[i][j]) {
@@ -395,8 +499,8 @@ class GraphTetrahedronApp : Application() {
             anchorAngleY = rotateY.angle
         }
         scene.addEventHandler(MouseEvent.MOUSE_DRAGGED) { event ->
-            rotateX.angle = anchorAngleX - (event.sceneY - anchorY)
-            rotateY.angle = anchorAngleY + (event.sceneX - anchorX)
+            rotateX.angle = anchorAngleX + (event.sceneY - anchorY)
+            rotateY.angle = anchorAngleY - (event.sceneX - anchorX)
         }
         // Scroll event for zoom.
         scene.addEventHandler(ScrollEvent.SCROLL) { event ->
