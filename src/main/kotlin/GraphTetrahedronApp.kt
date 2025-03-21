@@ -233,16 +233,21 @@ class GraphTetrahedronApp : Application() {
 //        dTreeRoot = cpmd
 //    }
     private fun buildITree() {
-        val a = TreeNode("I sourse", 0, "source")
-        val b = TreeNode("I true", 1, "int")
-        val c = TreeNode("I false", 1, "int")
-        val d = TreeNode("I1", 2, "int")
-        val e = TreeNode("I2", 2, "int")
-        val f = TreeNode("I3", 2, "int")
-        a.children.addAll(listOf(b, c))
-        b.children.addAll(listOf(d, e))
-        c.children.add(f)
-        iTreeRoot = a
+        val sBA = TreeNode("Structural and biochemical alterations in hip", 0, "source")
+        iTreeRoot = sBA
+
+        val fracture = TreeNode("Fracture", 1, "int")
+        val noFracture = TreeNode("No Fracture", 1, "int")
+
+
+        val fiberDensity = TreeNode("Fiber Density", 2, "measurement")
+        val fiberThickness = TreeNode("Fiber Thickness", 2, "measurement")
+        val rigidity = TreeNode("Fiber Rigidity", 2, "measurement")
+
+        fracture.children.addAll(listOf(fiberDensity, fiberThickness))
+        noFracture.children.addAll(listOf(rigidity))
+        sBA.children.addAll(listOf(fracture, noFracture))
+
     }
 
 
@@ -250,26 +255,26 @@ class GraphTetrahedronApp : Application() {
 
 
     private fun buildDTree() {
-        val cpmd = TreeNode("chronic pain and memory deficit", 0, "source")
+        val cpmd = TreeNode("Chronic pain and memory deficit", 0, "source")
         dTreeRoot = cpmd
 
 
 
-        val painD = TreeNode("pain_o", 1, "int")
-        val memoryD = TreeNode("memory_o", 1, "int")
+        val painD = TreeNode("Pain", 1, "int")
+        val memoryD = TreeNode("Memory", 1, "int")
         cpmd.children.addAll(listOf(painD, memoryD))
 
 
 
         //level 2
 
-        val pain = TreeNode("pain", 2, "int")
-        val noPain = TreeNode("no pain", 2, "int")
+        val pain = TreeNode("Pain", 2, "int")
+        val noPain = TreeNode("No pain", 2, "int")
         painD.children.addAll(listOf(pain, noPain))
 
 
-        val memory = TreeNode("memory", 2, "int")
-        val noMemory = TreeNode("no memory", 2, "int")
+        val memory = TreeNode("Memory", 2, "int")
+        val noMemory = TreeNode("No memory", 2, "int")
         memoryD.children.addAll(listOf(memory, noMemory))
 
         /*
@@ -297,13 +302,17 @@ class GraphTetrahedronApp : Application() {
 
        // level 3 adj
 
-       val painSensitivity = TreeNode("pain sensitivity", 3, "measurement")
-       val workingMemoryDeficit = TreeNode("working memory deficit", 3, "measurement")
-       val locationMemoryDeficit = TreeNode("location memory deficit", 3, "measurement")
-       pain.children.addAll(listOf(painSensitivity))
-       //noPain.children.addAll(listOf(painSensitivity))
+       val increasedPainSensitivity = TreeNode("Increased pain sensitivity", 3, "measurement")
+        val stablePainSensitivity = TreeNode("Stable pain sensitivity", 3, "measurement")
+       val workingMemoryDeficit = TreeNode("Working memory deficit", 3, "measurement")
+       val locationMemoryDeficit = TreeNode("Location memory deficit", 3, "measurement")
+        val stableWorkingMemory = TreeNode("Stable working memory", 3, "measurement")
+        val stableLocationMemory = TreeNode("Stable location memory", 3, "measurement")
+
+       pain.children.addAll(listOf(increasedPainSensitivity))
+       noPain.children.addAll(listOf(stablePainSensitivity))
        memory.children.addAll(listOf(workingMemoryDeficit, locationMemoryDeficit))
-       //noMemory.children.addAll(listOf(workingMemoryDeficit,locationMemoryDeficit))
+       noMemory.children.addAll(listOf(stableWorkingMemory,stableLocationMemory))
         /*
        collapse function might be causing nodes to overlap in display when a leaf is given 2 parent nodes,
        perhaps leaves should only have one parent as in an actual tree?
